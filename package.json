@@ -1,8 +1,9 @@
 {
   "name": "connect-store",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "description": "Connect react view to store",
-  "main": "index.js",
+  "main": "./lib/index.js",
+  "typings": "./lib/index.d.ts",
   "license": "MIT",
   "author": "Misery Lee <miserylee@foxmail.com>",
   "repository": {
@@ -25,11 +26,13 @@
     "webpack": "^3.10.0"
   },
   "dependencies": {
+    "@types/react": "^16.0.40",
+    "@types/react-dom": "^16.0.4",
     "react": "^16.2.0"
   },
   "scripts": {
-    "build": "babel src -d lib",
+    "build": "tsc",
     "start:example": "webpack-dev-server --config ./example/webpack.config.js",
-    "prepublish": "npm run build"
+    "prepublishOnly": "npm run build"
   }
 }
