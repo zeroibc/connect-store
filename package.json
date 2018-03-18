@@ -1,6 +1,6 @@
 {
   "name": "connect-store",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Connect react view to store",
   "main": "./lib/index.js",
   "typings": "./lib/index.d.ts",
