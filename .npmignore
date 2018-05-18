@@ -2,3 +2,6 @@
 .idea
 node_modules
 Example
+tsconfig.json
+tslint.json
+/lib/

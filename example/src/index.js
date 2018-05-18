@@ -1,6 +1,6 @@
 import React from 'react';
 import { render } from 'react-dom';
-import Connector from '../../src';
+import Connector from '../../lib';
 import List from './List';
 import ListStore from './ListStore';
 import { CounterView, CounterStore } from './Counter';

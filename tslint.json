@@ -25,7 +25,8 @@
     "no-var-requires": false,
     "align": false,
     "max-line-length": [false],
-    "max-classes-per-file": [false]
+    "max-classes-per-file": [false],
+    "no-shadowed-variable": false
   },
   "rulesDirectory": []
 }

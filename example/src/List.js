@@ -1,5 +1,5 @@
 import React from 'react';
-import Connector from '../../src';
+import Connector from '../../lib';
 
 const ItemView = ({ text, finished, onRemove, onUpdateText, onToggleFinish }) => {
   return (
