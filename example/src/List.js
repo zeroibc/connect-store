@@ -24,6 +24,7 @@ const List = function ({ title, items, newItemText, onAdd, onUpdateNewItemText, 
             key={itemStore._id}
             View={ItemView}
             store={itemStore}
+            flushKeys={['text']}
           />
         );
       })}</ul>

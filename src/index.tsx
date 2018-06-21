@@ -18,7 +18,11 @@ export interface IObject {
 }
 
 export interface IStore extends IObject {
-  _syncQueues?: IObject[][];
+  _connectors?: Connector[];
+
+  __binding?(): void;
+
+  __idle?(): void;
 }
 
 export type ConnectorStore = IStore | IStore[];
@@ -26,12 +30,47 @@ export type ConnectorStore = IStore | IStore[];
 export interface IConnectorProps extends React.Attributes, IObject {
   store?: ConnectorStore;
   View: React.ReactType;
+  flushKeys?: string[];
+}
+
+class SyncQueue {
+  private _queue: IObject[] = [];
+  private _activated: boolean = false;
+  private _connector: Connector;
+  private _flushKeys: string[];
+
+  constructor(connector: Connector, flushKeys: string[]) {
+    this._connector = connector;
+    this._flushKeys = flushKeys;
+  }
+
+  public push(state: IObject) {
+    if (this._flushKeys.length > 0 && this._flushKeys.includes(Object.keys(state)[0])) {
+      this._connector.setState(state);
+      return;
+    }
+    this._queue.push(state);
+    this._activate();
+  }
+
+  private _activate() {
+    if (this._activated) {
+      return;
+    }
+    this._activated = true;
+    setImmediate(() => {
+      this._connector.setState(Object.assign({}, ...this._queue));
+      this._queue = [];
+      this._activated = false;
+    });
+  }
 }
 
 export default class Connector extends React.PureComponent<IConnectorProps> {
   public static defaultProps = {
     store: [],
     View: null,
+    flushKeys: [],
   };
 
   private static _wrapStore(store: ConnectorStore = []) {
@@ -41,25 +80,13 @@ export default class Connector extends React.PureComponent<IConnectorProps> {
     return store;
   }
 
-  private _syncQueue: IObject[];
-  private _queueInterval: number;
+  public syncQueue: SyncQueue;
+
   private _actions: IObject = {};
 
   constructor(props: IConnectorProps) {
     super(props);
-
-    // Start sync queue
-    this._syncQueue = [];
-    this._queueInterval = setInterval(() => {
-      if (this._syncQueue.length > 0) {
-        try {
-          this.setState(Object.assign({}, ...this._syncQueue));
-        } catch (err) {
-          console.error(err);
-        }
-        this._syncQueue.splice(0);
-      }
-    });
+    this.syncQueue = new SyncQueue(this, props.flushKeys || []);
     this._initState(props.store);
   }
 
@@ -70,7 +97,8 @@ export default class Connector extends React.PureComponent<IConnectorProps> {
   }
 
   public componentWillUnmount() {
-    clearInterval(this._queueInterval);
+    // When connector unmount, unbind all stores.
+    this._update([], this.props.store);
   }
 
   public render() {
@@ -93,19 +121,28 @@ export default class Connector extends React.PureComponent<IConnectorProps> {
   }
 
   private _update(store: ConnectorStore = [], prevStore: ConnectorStore = []) {
-    store = Connector._wrapStore(store);
-    prevStore = Connector._wrapStore(prevStore);
+    const newStores = Connector._wrapStore(store) as IStore[];
+    const oldStores = Connector._wrapStore(prevStore) as IStore[];
+
+    const addedStores = newStores.filter(s => !oldStores.includes(s));
+    const removedStores = oldStores.filter(s => !newStores.includes(s));
 
     // Unbind previous stores
-    (prevStore as IStore[]).forEach(this._unbindStore.bind(this));
+    removedStores.forEach(this._unbindStore.bind(this));
     // Bind stores
-    (store as IStore[]).forEach(this._bindStore.bind(this));
+    addedStores.forEach(s => {
+      this.setState(this._bindStore(s));
+    });
   }
 
   private _unbindStore(store: IStore) {
-    // Unbind sync queue
-    if (store._syncQueues && store._syncQueues.length > 0) {
-      store._syncQueues.splice(store._syncQueues.indexOf(this._syncQueue), 1);
+    // Unbind connector
+    if (store._connectors && store._connectors.length > 0) {
+      store._connectors.splice(store._connectors.indexOf(this), 1);
+      // When all connectors has unbind, the store is idle, call the idle method
+      if (store.__idle) {
+        store.__idle();
+      }
     }
   }
 
@@ -113,9 +150,9 @@ export default class Connector extends React.PureComponent<IConnectorProps> {
     const keys = Object.getOwnPropertyNames(store).filter(k => !/^_/.test(k));
     const methods = getMethods(store);
 
-    // Bind sync queue
-    store._syncQueues = store._syncQueues || [];
-    store._syncQueues.push(this._syncQueue);
+    // Bind connector
+    store._connectors = store._connectors || [];
+    store._connectors.push(this);
 
     const { state, properties } = keys.reduce(({ state, properties }: {
       state: IObject;
@@ -129,15 +166,16 @@ export default class Connector extends React.PureComponent<IConnectorProps> {
       if (!store._definedProperties) {
         const setter = store.__lookupSetter__(key);
         properties[key] = {
-          set(value: any) {
+          set(this: IStore, value: any) {
             if (setter) {
               setter.bind(this)(value);
             }
             this[privateKey] = value;
-            const setState = {
-              [key]: value,
-            };
-            (this._syncQueues as IObject[][]).forEach(syncQueue => syncQueue.push(setState));
+            this._connectors!.forEach(connector => {
+              connector.syncQueue.push({
+                [key]: value,
+              });
+            });
           },
           get() {
             return this[privateKey];
@@ -147,9 +185,6 @@ export default class Connector extends React.PureComponent<IConnectorProps> {
 
       return { state, properties };
     }, { state: {}, properties: {} });
-
-    // Initialize state
-    this._syncQueue.push(state);
 
     // Transform actions
     this._actions = {
@@ -167,6 +202,11 @@ export default class Connector extends React.PureComponent<IConnectorProps> {
     if (!store._definedProperties) {
       Object.defineProperties(store, properties);
       store._definedProperties = true;
+    }
+
+    // Has bind to connector, call the __binding method of the store.
+    if (store.__binding) {
+      store.__binding();
     }
 
     return state;
